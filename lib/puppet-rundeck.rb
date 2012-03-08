@@ -23,6 +23,8 @@ rescue LoadError
   puts "You need to have Puppet 0.25.5 or later installed"
 end
 
+$node_tag_cache = Hash.new
+
 class PuppetRundeck < Sinatra::Base
 
   class << self
@@ -56,6 +58,16 @@ class PuppetRundeck < Sinatra::Base
       end
       nodes.each do |n|
         facts = n.parameters
+        tags = []
+        begin
+            if $node_tag_cache[n.name].nil?
+                $node_tag_cache[n.name] = Puppet::Resource::Catalog.indirection.find(n.name).tags
+            end
+            tags = $node_tag_cache[n.name]
+        rescue
+            tags = []
+        end
+
         os_family = facts["kernel"] =~ /windows/i ? 'windows' : 'unix'
       response_xml << <<-EOH
 <node name="#{xml_escape(n.name)}"
@@ -65,7 +77,8 @@ class PuppetRundeck < Sinatra::Base
       osFamily="#{xml_escape(os_family)}"
       osName="#{xml_escape(facts["operatingsystem"])}"
       osVersion="#{xml_escape(facts["operatingsystemrelease"])}"
-      tags="#{xml_escape([n.environment])}"
+      tags="#{xml_escape([n.environment, tags.join(',')].join(','))}"
+      environment="#{xml_escape([n.environment])}"
       username="#{xml_escape(PuppetRundeck.username)}"
       hostname="#{xml_escape(facts["fqdn"])}"/>
 EOH
